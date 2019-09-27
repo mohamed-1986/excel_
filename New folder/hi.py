@@ -1,1 +1,2 @@
-print("hi there")
+def adder(a,b):
+    return a+b
