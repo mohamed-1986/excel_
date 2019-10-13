@@ -1,16 +1,22 @@
-from copybydictXlsx import createData,copyRange, pasteRange, searchForWord
+from copybydictXlsx import moveData, TheSheets
+# from copybydictXlsx import copyRange, pasteRange, searchForWord, TheSheets, searchRowStarting, dictionaries
 import os
+# import xlrd, openpyxl
+
 #Prepare the spreadsheets to copy from and paste.
 # open all the files in a folder to copy from
-# pasteFile= input("Paste File:")
 
+pasteFileName = input("Paste File:")
+pasteFileSheet= "History 02"
+copyFolder= input("Copy Folder: ")
+os.chdir(copyFolder)
 
-# copyFolder= input("Copy Folder: ")
-# os.chdir(copyFolder)
-# f= os.listdir(copyFolder)
-print(createData("01-09-2019.xlsx", "Sample2.xlsx"))
+ff= os.listdir(copyFolder)
+f=[sf for sf in ff if sf.endswith('.xls') or sf.endswith('xlsx')]
 
-# for iterCopy in f:
-    # if iterCopy.endswith('.xlsx'):
-    #     createData(iterCopy, pasteFile)
-    #     # print(iterCopy)
+for copyFileName in f:
+    wb, wss= TheSheets(copyFileName)
+    for copyFileSheet in wss:
+        print(copyFileName, copyFileSheet, pasteFileName ,"History 02")
+        moveData(copyFileName, copyFileSheet, pasteFileName, pasteFileSheet)
+    

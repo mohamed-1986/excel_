@@ -1,28 +1,35 @@
 #! Python 3
 # - Copy and Paste Ranges using OpenPyXl library
-import openpyxl ,datetime, os
+import openpyxl ,datetime, os, xlrd
+# excel loading
+# file name is given, the output is sheets to copy from
 
-#Copy range of cells as a nested list
-#Takes: start , and sheet you want to copy from.
+def TheSheets(file):
+    if file.endswith(".xls"):
+        wb= xlrd.open_workbook(file)
+        sheets = [ws for ws in wb.sheet_names() if ws =="EMC" or "AREA" in ws.upper()]
+        return wb, sheets
+    elif file.endswith(".xlsx"):
+        wb= openpyxl.load_workbook(file)
+        sheets = [ws for ws in wb.sheetnames if ws =="EMC" or "AREA" in ws.upper()]
+        return wb, sheets
+
+#Copy range of cells as a nested list.[{"Tag":"02-FT-010","Problem":"Blockage"},{"Tag":"04-FV-002","Problem":"Stuck"}]
 def copyRange(copyDict, sheet):
-    startRow = searchForWord(sheet, "TAG")[0] + 1
+    startRow = searchRowStarting(sheet, "TAG")[0]
     rangeSelected = []
-    #Loops through selected Rows.
-    while str( sheet.cell(startRow, copyDict["Tag"]).value)!= "None": #the while is to loop until data is finished
-        rowSelected = {}
-        for j in copyDict:
-            rowSelected[j] =sheet.cell(row= startRow, column= copyDict[j]).value
-            # if isinstance( sheet.cell(row= startRow , column= copyDict[j]).value , datetime.datetime):
-            #     #here we check the type of data copied if date? it must be formatted as must.
-            #     d =sheet.cell( row= startRow , column= copyDict[j]).value
-            #     rowSelected[j]  = d.strftime("%d/%m/%Y")
-            # else:
-            #     rowSelected[j] =sheet.cell(row= startRow , column= copyDict[j]).value
-        #Adds the RowSelected List and nests inside the rangeSelected
-        rangeSelected.append(rowSelected)
-        startRow= startRow + 1
+    #Loops through selected Rows. the while is to loop until data is finished
+    try:
+        while "-" in str( sheet.cell(startRow, copyDict["Tag"]).value):
+            rowSelected = {}
+            for j in copyDict:
+                rowSelected[j] =str(sheet.cell(startRow, copyDict[j]).value)
+            #Adds the RowSelected List and nests inside the rangeSelected
+            rangeSelected.append(rowSelected)
+            startRow= startRow + 1
+    except IndexError:
+            pass
     return rangeSelected
-
 
 #Paste data from copyRange into template sheet
 def pasteRange(copyDict, pasteDict, sheetReceiving, copiedData, datePaste):
@@ -33,104 +40,115 @@ def pasteRange(copyDict, pasteDict, sheetReceiving, copiedData, datePaste):
         startRow= startRow-1         #decrement the row to check if the data was manualy deleted
 
     endRow= startRow+ len(copiedData)
-    # pasting is in here:
+    # pasting is in here: #first we set the serial then the date
     for i in range(startRow, endRow,1):  # for every row, we start to paste the new row
         try:  #pasting a new serial number
             sheetReceiving.cell(i,1).value = sheetReceiving.cell(i-1,1).value +1
         except:
             sheetReceiving.cell(i,1).value= 1
         sheetReceiving.cell(i,pasteDict["Date"]).value = datePaste    # pasting date
-        
-
+        #  Second we paste corrsponding data: tag of copy with tag of paste, problem with problem, etc..
         for j in copyDict:   #for every column, we paste matched tags
             sheetReceiving.cell(i,pasteDict[j] ).value = copiedData[countRow][j]
         countRow += 1
-
 #this returns the column place for the main headers ex. tag in column 2 and problem in column 3
+def searchRowStarting(sheet, theWord):
+    for i in range(1, 10,1):
+        #Appends the row to a RowSelected list
+        for j in range(1, 10,1):
+            try:
+                if theWord in str(sheet.cell(i,j).value).upper():
+                    if '-' in str(sheet.cell(i+1,j).value):
+                        return i+1, j, "first", sheet.cell(i+1,j).value
+                    elif '-' in str(sheet.cell(i+2,j).value):
+                        return i+2, j, "second", sheet.cell(i+2,j).value               
+                    else:
+                        return FileExistsError
+            except IndexError:
+                return FileExistsError
+
 def searchForWord(sheet, theWord):
     for i in range(1, 10,1):
         #Appends the row to a RowSelected list
         for j in range(1, 10,1):
             if theWord in str(sheet.cell(i,j).value).upper():
-                return i,j
+                return i, j
 
-# drop down any key value pair if empty value
-def dictValidator(d):
-    new={}
-    for k,v in d.items():
-        if v!= None:
-            new[k]=v
-    return new
-
-def createData(copyFileName, pasteFileName):
+def moveData(copyFileName, copyFileSheet, pasteFileName, pasteFileSheet):
     print("Processing...")
-    copyFile = openpyxl.load_workbook(copyFileName) 
-    copySheet= copyFile["Area 04"]
+
+    if copyFileName.endswith(".xlsx"):
+        wb= openpyxl.load_workbook(copyFileName)
+        copySheet= wb[copyFileSheet]
+    elif copyFileName.endswith(".xls"):
+        wb = xlrd.open_workbook(copyFileName)
+        copySheet= wb.sheet_by_name(copyFileSheet)
 
     pasteFile = openpyxl.load_workbook(pasteFileName)
-    pasteSheet= pasteFile["Area 02"]
+    pasteSheet= pasteFile[pasteFileSheet]
 
     print("Files are successfully loaded!")
+    pasteDict, copyDict, dateCopy= dictionaries( copyFileName, copySheet, pasteSheet)
+    if searchRowStarting(copySheet,"TAG") != FileExistsError and searchRowStarting(copySheet,"TAG") != IndexError:
+        selectedRange = copyRange(copyDict, copySheet)
+        pasteRange(copyDict, pasteDict, pasteSheet, selectedRange, dateCopy) 
+        #You can save the template as another file to create a new file here too
+        pasteFile.save("D:/programs/python/excel/project/New folder/Sample2.xlsx")
 
-    #To extract the date value from the file name
+        print("items copied and pasted!")
+        return selectedRange, pasteFile
+
+def dictionaries(copyFileName, copySheet, pasteSheet ):
+    copyDict={}
+    pasteDict= {}
     dateCopy = os.path.basename(copyFileName).split('.')[0]
     if "," in dateCopy:
         dateCopy= copyFileName.split(",")[0] +"-"+ copyFileName.split("-",maxsplit=1)[1]  
     dateCopy= str(dateCopy)
 
-    tagPaste= searchForWord(pasteSheet, "TAG")[1]
-    tagCopy= searchForWord(copySheet, "TAG")[1]
+    try:
+        pasteDict["Tag"]= searchForWord(pasteSheet, "TAG")[1]
+    except TypeError:
+        pass
 
-    problemPaste= searchForWord(pasteSheet,"PROB")[1]
-    problemCopy= searchForWord(copySheet,"PROB")[1]
-
-    complainPaste= searchForWord(pasteSheet,"COMP")[1]
-    complainCopy= searchForWord(copySheet,"COMP")[1]
-
-    actionPaste= searchForWord(pasteSheet,"ACTION")[1]
-    actionCopy= searchForWord(copySheet,"ACTION")[1]
-
-    statusPaste= searchForWord(pasteSheet,"STATUS")[1]
-    statusCopy= searchForWord(copySheet,"STATUS")[1]
-
-    datePaste= searchForWord(pasteSheet,"DATE")[1]
-
-# A dictionary for the label tags with a column number for each tag.
-# later need a row iteration to loop through data.
-#ex tag:2 problem:3 Complain:4
-    nonFilteredPasteDict= {
-    "Tag": tagPaste, "Problem": problemPaste,
-    "Complain": complainPaste , "Action" : actionPaste, 
-    "Status": statusPaste, "Date": datePaste
-    }
-
-    nonFilterdedCopyDict= {
-    "Tag": tagCopy, "Problem": problemCopy,
-    "Complain": complainCopy , "Action" : actionCopy, 
-    "Status": statusCopy
-    }
-
-    copyDict= dictValidator(nonFilterdedCopyDict)
-    pasteDict= dictValidator(nonFilteredPasteDict)
-
-    selectedRange = copyRange(copyDict, copySheet)
-    pasteRange(copyDict, pasteDict, pasteSheet, selectedRange, dateCopy) 
-    #You can save the template as another file to create a new file here too
-    pasteFile.save("Sample2.xlsx")
-    print(pasteFile, pasteFileName)
-    print("items copied and pasted!")
-    return selectedRange
-
-# createData("Sample1.xlsx", "Sample2.xlsx")
-
-
-# open all the files in a folder to copy from
-# pasteFile= input("File to paste into:")
-
-# copyFolder= input("Folder to be copied: ")
-# print(copyFolder)
-# os.chdir(copyFolder)
-# f= os.listdir(copyFolder)
-# for i in f:
-#     if i.endswith('.xlsx'):
-#         createData(i)
+    try:
+        copyDict["Tag"]= searchForWord(copySheet, "TAG")[1]
+    except TypeError:
+        pass
+    try:
+        pasteDict["Problem"]= searchForWord(pasteSheet,"PROB")[1]
+    except TypeError:
+        pass
+    try:
+        copyDict["Problem"]= searchForWord(copySheet,"PROB")[1]
+    except TypeError:
+        pass
+    try:
+        pasteDict["Complain"]= searchForWord(pasteSheet,"COMPLAIN")[1]
+    except TypeError:
+        pass
+    try:
+        copyDict["Complain"]= searchForWord(copySheet,"COMPLAIN")[1]
+    except:
+        pass
+    try:
+        pasteDict["Action"]= searchForWord(pasteSheet,"ACTION")[1]
+    except TypeError:
+        pass
+    try:
+        copyDict["Action"]= searchForWord(copySheet,"ACTION")[1]
+    except TypeError:
+        pass
+    try:
+        pasteDict["Status"]= searchForWord(pasteSheet,"STATUS")[1]
+    except TypeError:
+        pass
+    try:
+        copyDict["Status"]= searchForWord(copySheet,"STATUS")[1]
+    except TypeError:
+        pass
+    try:
+        pasteDict["Date"]= searchForWord(pasteSheet,"DATE")[1]
+    except TypeError:
+        pass
+    return pasteDict, copyDict, dateCopy
